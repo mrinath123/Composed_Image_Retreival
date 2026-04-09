@@ -1,49 +1,94 @@
-# Composed_Image_Retreival
+# 👕 Composed_Image_Retreival
 
-This project moves beyond standard retrieval by using **LVLMs** (Multimodal LLM) to synthesize high-quality, full-sentence descriptions of fashion items. These descriptions are then used to perform zero-shot retrieval using **BLIP-ITM**.
+This repository contains a pipeline for composed image retrieval task. It utilizes LVLMs like **Gemma-3** to synthesize high-quality training data and **BLIP** (Vision-Language Model) to perform zero-shot and fine-tuned retrieval.
 
-## 🚀 The Pipeline Architecture
-
-Unlike traditional methods that use raw, fragmented human instructions (e.g., "more blue and longer"), our pipeline follows a three-stage transformation process:
-1. **Visual Grounding:** Converting raw images into structured base captions.
-2. **LLM Transformation:** Blending base captions with human instructions to create a "Target State" description.
-3. **Optimized Retrieval:** Matching synthesized text against a pre-computed image gallery.
+## 🚀 Overview
+Traditional fashion retrieval uses fragmented instructions (e.g., "more blue"). This pipeline transforms those fragments into full, descriptive target sentences using Gemma-3, significantly improving the alignment between text queries and target images.
 
 ---
 
-## 📂 File Breakdown & Logic
+## 📂 Project Structure & Script Guide
 
-### 1. `text_fashion.py` (The Dataset Curator)
-**What it does:** This script creates a "Closed Set" evaluation sandbox. 
-- It scans your local disk to find which images actually exist.
-- It filters the Fashion-IQ metadata to ensure that for every query, the **Reference image** and the **Target image** are both physically present.
-- It outputs a `closed_set_image_ids.json` (The Gallery) and `closed_set_queries.json` (The Test Set).
+### 🧱 Phase 1: Data Curation
+* **`check_ref.py`**: **The Entry Point.** Scans your local disk for images and filters the Fashion-IQ metadata. It creates a "Closed Set" gallery and valid query list to ensure 100% path integrity during evaluation.
 
-### 2. `captn_gen.py` (The Vision Generator)
-**What it does:** Uses **Gemma-3**'s multimodal capabilities to "see" the reference image.
-- It ignores the human model and focuses strictly on the garment's attributes (color, style, graphics).
-- It produces a clean, descriptive "Base Caption" for every image in your closed set.
+### ✍️ Phase 2: Synthetic Captioning (Gemma-3)
+* **`captn_gen.py`**: Vision-to-Text. Uses Gemma-3 to describe reference images, focusing purely on garment attributes (color, style, fabric) while ignoring the person.
+* **`modify_captn.py`**: Relational Editing. Takes the base caption and applies the human instruction (e.g., "add stripes") to generate a final sentence describing the *target* image.
 
-### 3. `modify_captn.py` (The Relational Editor)
-**What it does:** This is the "brain" of the text pipeline. 
-- It takes the **Base Caption** and the **Fashion-IQ Instruction** (e.g., "make it red").
-- Using Few-Shot prompting, it forces Gemma-3 to perform a logical edit.
-- **Output:** A single sentence describing what the *target* image should look like.
+### 🏋️ Phase 3: Model Training
+* **`blip_train.py`**: Training an **Adapter Head**. Keeps the BLIP backbone frozen and trains a linear layer to specialize the model on fashion-specific vocabulary and features.
 
-### 4. `blip_infer.py` (The Performance Judge)
-**What it does:** This is a high-speed retrieval engine using **BLIP-ITM**.
-- **Feature Caching:** It encodes all gallery images into vectors first so it doesn't have to re-process them for every query.
-- **Batched Scoring:** It compares the synthesized text against the gallery in batches for maximum GPU utilization.
-- **Metrics:** It calculates Recall@1, 5, 10, and 50.
+### 🔍 Phase 4: Retrieval & Inference
+* **`run_ret_base.py`**: A baseline script for evaluating standard BLIP models without synthetic captions or training.
+* **`blip_infer.py`**: Evaluation script for the trained Adapter model. Calculates Recall@K (1, 5, 10).
+* **`blip_fast_retrieval.py`**: **Optimized Search.** Uses Feature Caching and Batching to rank thousands of images in seconds rather than hours.
+
+### 🧪 Phase 5: Advanced Diffusion Experiments
+* **`diffusion_img.py`**: Uses **InstructPix2Pix** to "dream" the target image based on the reference and instruction, then performs an image-to-image search.
+* **`diff_text.py`**: Fusion Retrieval. Combines the vectors of the "Dreamed Image" and the "Modified Text" for the most accurate retrieval results.
 
 ---
 
-## 📊 Dataset Setup
+## 🛠 Setup & Installation
 
-1. **Download Fashion-IQ:** Request access at the [Official Repository](https://github.com/XiaoxiaoGuo/fashion-iq).
-2. **Structure:**
-   ```text
-   /fashion-iq/
-   └── fashionIQ_dataset/
-       ├── images/ (Place all .jpg files here)
-       └── captions/ (cap.dress.val.json, cap.shirt.val.json, etc.)
+1. Clone the repository:
+    git clone <your-repo-link>
+    cd fashion-iq-pipeline
+
+2. Install dependencies:
+    pip install -r requirements.txt
+
+3. Dataset Preparation:
+
+Place the Fashion-IQ dataset in the following structure:
+
+fashionIQ_dataset/
+├── images/   # All .jpg files
+└── captions/ # cap.dress.val.json, cap.shirt.val.json, etc.
+
+---
+
+## 🏃 Execution Workflow
+
+Run the pipeline in this exact order:
+
+1. Initialize the Gallery
+    # Set TARGET_SET_SIZE = None in the script for full dataset evaluation
+    python check_ref.py
+
+2. Synthesize Training Data
+    python captn_gen.py
+    python modify_captn.py
+
+3. (Optional) Train the Adapter
+    python blip_train.py
+
+4. Perform Retrieval Evaluation
+    python blip_fast_retrieval.py
+
+---
+
+## 📊 Evaluation Metrics
+
+- Recall@1: Is the correct item the #1 result?
+- Recall@10: Is the correct item in the top 10?
+- Recall@50: Is the correct item in the top 50?
+
+---
+
+## 💡 Important Configuration
+
+- Cache: Default path is /BS/DApt/work/huggingface_cache. Update CACHE_DIR if needed.
+- GPU: Gemma-3 requires high VRAM. If you hit OOM errors:
+    - Set torch_dtype=torch.bfloat16
+    - Reduce BATCH_SIZE
+
+---
+
+## 📌 Notes
+
+- requirements.txt: Place in project root and run:
+    pip install -r requirements.txt
+
+- README.md: This file explains the pipeline and execution order.
