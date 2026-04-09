@@ -1,0 +1,11 @@
+torch>=2.0.0
+torchvision
+transformers>=4.45.0
+diffusers
+accelerate
+pillow
+tqdm
+numpy
+matplotlib
+peft
+sentencepiece
